@@ -89,7 +89,7 @@ L'application doit faciliter :
 - Ajouter un module de suivi des relances et des actions commerciales.
 - ~~Enregistrer automatiquement le lien de la maquette déployée (Netlify) dans la fiche prospect~~ → fait (bouton « Déployer sur Netlify » in-app).
 - ~~Permettre la suppression d'un Mockup depuis la fiche prospect~~ → toujours pas fait pour les Mockups (seulement pour ProspectPhotoLink et ProspectMessage) ; à ajouter si les maquettes ratées/obsolètes s'accumulent.
-- Créer une page de tarifs statique (HTML stylée, à la manière d'un exemple déjà réalisé pour un client) et renseigner son URL dans `PRICING_PAGE_URL` pour qu'elle soit intégrée automatiquement aux prompts de message.
+- ~~Créer une page de tarifs statique (HTML stylée, à la manière d'un exemple déjà réalisé pour un client) et renseigner son URL dans `PRICING_PAGE_URL` pour qu'elle soit intégrée automatiquement aux prompts de message.~~ → fait (page `tarifs.html` sur `website-etnof-web`, `PRICING_PAGE_URL` renseigné).
 - Marquer un message de prospection comme « envoyé » (au-delà du simple enregistrement) pour un vrai suivi CRM par canal.
 - Nettoyer/décommissionner l'ancien système d'email par templates (`EmailController`, `EmailTemplate`, `EmailEnvoye`, désinscription) s'il reste durablement inutilisé, ou le relier au nouveau système de messages si l'email redevient pertinent.
 
@@ -112,6 +112,35 @@ L'application doit faciliter :
 - Mettre en place un pipeline CI/CD pour tests et déploiement.
 
 ## Journal des sessions
+
+```text
+[DATE] : 09/07/2026 (session 2)
+
+1) Tâches réalisées aujourd'hui
+- [x] Création de la page de tarifs statique `tarifs.html` dans le repo `website-etnof-web`, sur la base de la charte graphique du site (variables CSS, Manrope, boutons pilule, cartes arrondies) — 3 formules provisoires (Essentiel / Pro / Sur-mesure)
+- [x] Nouvelles classes CSS dédiées (`pricing-grid`, `pricing-card`, `pricing-card-featured`, etc.) ajoutées à `style.css` du site, responsive via le breakpoint existant
+- [x] Lien « Tarifs » ajouté dans la nav principale, le footer (bouton + liens légaux) et `sitemap.xml` du site `website-etnof-web`
+- [x] Branche `feat/page-tarifs` poussée sur GitHub (PR à créer manuellement, `gh` CLI absent en local — lien direct fourni)
+- [x] `PRICING_PAGE_URL` renseigné dans le `.env` de PremierClic (`https://website-etnof-web.vercel.app/tarifs.html`) ; le câblage backend (`ProspectDiscoveryController`, `docker-compose.yml`) existait déjà et intègre désormais automatiquement ce lien dans le prompt de message de prospection
+- [x] Conteneur `api` recréé (`docker compose up -d api`) pour prendre en compte la nouvelle variable
+
+2) Tâches en cours / à continuer
+- [ ] Créer la pull request sur GitHub pour la branche `feat/page-tarifs` (lien généré : https://github.com/EthanFrou1/website-etnof-web/pull/new/feat/page-tarifs) puis merger
+- [ ] Revoir le contenu de la page tarifs (noms de formules, prix, prestations incluses) — actuellement du placeholder au hasard
+- [ ] Vérifier le rendu de `tarifs.html` une fois déployé sur Vercel (desktop + mobile)
+
+3) Tâches à faire ensuite
+- [ ] Vérifier en conditions réelles qu'un prompt de message de prospection généré inclut bien le lien de la page tarifs
+- [ ] Documentation de déploiement Coolify / Docker
+- [ ] Suppression d'un Mockup depuis la fiche prospect
+
+4) Blocages / décisions prises
+- [x] Décision : contenu de la page tarifs (noms/prix) volontairement provisoire, à retravailler plus tard une fois la grille tarifaire réelle définie
+- [ ] Blocage mineur : `gh` CLI non installé sur la machine, la PR ne peut pas être créée en ligne de commande — création manuelle via le lien GitHub fourni
+
+5) Notes / remarques
+- Le lien de la page tarifs n'est utile dans les prompts qu'une fois la PR `feat/page-tarifs` mergée et déployée sur Vercel (sinon `tarifs.html` répond en 404).
+```
 
 ```text
 [DATE] : 09/07/2026
