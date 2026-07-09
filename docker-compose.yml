@@ -1,0 +1,61 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-premierclic}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-premierclic_password}
+      POSTGRES_DB: ${POSTGRES_DB:-premierclic}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ConnectionStrings__DefaultConnection=${DATABASE_URL}
+      - JWT__Secret=${JWT_SECRET}
+      - SMTP__HOST=${SMTP_HOST}
+      - SMTP__PORT=${SMTP_PORT}
+      - SMTP__USER=${SMTP_USER}
+      - SMTP__PASS=${SMTP_PASS}
+      - ASPNETCORE_HTTP_PORTS=80
+      - FRONTEND_ORIGIN=${FRONTEND_ORIGIN:-http://localhost:5173}
+      - ADMIN_EMAIL=${ADMIN_EMAIL}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      - GOOGLE_PLACES_API_KEY=${GOOGLE_PLACES_API_KEY}
+      - NETLIFY_API_TOKEN=${NETLIFY_API_TOKEN}
+      - NETLIFY_SITE_ID=${NETLIFY_SITE_ID}
+    depends_on:
+      - db
+    ports:
+      - "5000:80"
+    volumes:
+      - uploads:/app/uploads
+    restart: on-failure
+
+  front:
+    build:
+      context: ./front
+      dockerfile: Dockerfile
+      args:
+        - VITE_API_BASE_URL=${VITE_API_BASE_URL:-http://localhost:5000}
+        - VITE_GOOGLE_MAPS_API_KEY=${VITE_GOOGLE_MAPS_API_KEY}
+    environment:
+      - VITE_API_BASE_URL=${VITE_API_BASE_URL:-http://localhost:5000}
+      - VITE_GOOGLE_MAPS_API_KEY=${VITE_GOOGLE_MAPS_API_KEY}
+    ports:
+      - "3000:80"
+    depends_on:
+      - api
+    restart: on-failure
+
+volumes:
+  pgdata:
+  uploads:
