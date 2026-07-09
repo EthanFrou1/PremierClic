@@ -284,6 +284,124 @@ public class ProspectDiscoveryController : ControllerBase
         return Ok(new { found = true, prompt });
     }
 
+    [HttpGet("google/email-prompt/{id}")]
+    public async Task<IActionResult> GetEmailPrompt(Guid id, [FromQuery] string? canal)
+    {
+        var apiKey = _configuration["GOOGLE_PLACES_API_KEY"];
+        if (string.IsNullOrWhiteSpace(apiKey))
+            return BadRequest("Google Places API key is not configured.");
+
+        var prospect = await _db.Prospects.FindAsync(id);
+        if (prospect == null)
+            return NotFound();
+
+        string? businessName = null;
+        double? rating = null;
+        int? ratingCount = null;
+        var reviews = new List<GoogleReview>();
+
+        var placeId = await ResolvePlaceIdAsync(prospect, apiKey);
+        if (!string.IsNullOrWhiteSpace(placeId))
+        {
+            var detailsUrl = $"https://maps.googleapis.com/maps/api/place/details/json?key={apiKey}&place_id={placeId}&fields=name,rating,user_ratings_total,reviews&language=fr";
+            var detailsResponse = await _httpClient.GetAsync(detailsUrl);
+            if (detailsResponse.IsSuccessStatusCode)
+            {
+                var details = await detailsResponse.Content.ReadFromJsonAsync<GooglePlaceDetailsResponse>(new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                if (details?.Status == "OK" && details.Result != null)
+                {
+                    businessName = details.Result.Name;
+                    rating = details.Result.Rating;
+                    ratingCount = details.Result.UserRatingsTotal;
+                    reviews = SelectRepresentativeReviews(details.Result.Reviews);
+                }
+            }
+        }
+
+        var mockupUrl = await _db.Mockups
+            .Where(m => m.ProspectId == id && m.UrlPreview != null)
+            .OrderByDescending(m => m.DateCreation)
+            .Select(m => m.UrlPreview)
+            .FirstOrDefaultAsync();
+
+        var companyWebsiteUrl = _configuration["COMPANY_WEBSITE_URL"];
+        var pricingPageUrl = _configuration["PRICING_PAGE_URL"];
+
+        var prompt = BuildEmailPrompt(prospect, businessName, rating, ratingCount, reviews, mockupUrl, canal, companyWebsiteUrl, pricingPageUrl);
+        return Ok(new { prompt, hasMockupUrl = mockupUrl != null });
+    }
+
+    private static string BuildEmailPrompt(Prospect prospect, string? businessName, double? rating, int? ratingCount, List<GoogleReview> reviews, string? mockupUrl, string? canal, string? companyWebsiteUrl, string? pricingPageUrl)
+    {
+        var isEmail = string.Equals(canal, "Email", StringComparison.OrdinalIgnoreCase);
+        var canalLabel = string.IsNullOrWhiteSpace(canal) ? "message privé (Instagram/WhatsApp)" : canal;
+
+        var sb = new StringBuilder();
+        if (isEmail)
+            sb.AppendLine("Rédige un email de prospection commerciale pour proposer à ce commerce local une maquette de site vitrine déjà réalisée gratuitement, en vue de le convaincre de passer à un vrai site internet.");
+        else
+            sb.AppendLine($"Rédige un message de prospection commerciale, à envoyer via {canalLabel}, pour proposer à ce commerce local une maquette de site vitrine déjà réalisée gratuitement, en vue de le convaincre de passer à un vrai site internet.");
+        sb.AppendLine();
+        sb.AppendLine($"**Commerce** : {businessName ?? prospect.Nom}");
+        sb.AppendLine($"**Catégorie / activité** : {prospect.Categorie ?? "commerce local"}");
+        sb.AppendLine($"**Ville** : {prospect.Ville ?? "non renseignée"}");
+        if (rating.HasValue)
+            sb.AppendLine($"**Note Google** : {rating}/5 ({ratingCount ?? 0} avis)");
+        sb.AppendLine();
+
+        if (reviews.Count > 0)
+        {
+            sb.AppendLine("**Avis clients représentatifs (pour le ton, à ne pas citer littéralement) :**");
+            foreach (var r in reviews)
+                sb.AppendLine($"- \"{TruncateReviewText(r.Text!)}\"");
+            sb.AppendLine();
+        }
+
+        var messageWord = isEmail ? "l'email" : "le message";
+        if (!string.IsNullOrWhiteSpace(mockupUrl))
+        {
+            sb.AppendLine($"**Maquette déjà réalisée, à inclure dans {messageWord} sous forme de lien cliquable** : {mockupUrl}");
+        }
+        else
+        {
+            sb.AppendLine($"**Aucune maquette déployée pour le moment** : rédige {messageWord} sans lien vers une maquette, en proposant plutôt d'en préparer une gratuitement si le commerçant est intéressé.");
+        }
+
+        if (!string.IsNullOrWhiteSpace(companyWebsiteUrl))
+            sb.AppendLine($"**Notre site (preuve sociale, à glisser en signature ou en fin de message)** : {companyWebsiteUrl}");
+
+        if (!string.IsNullOrWhiteSpace(pricingPageUrl))
+            sb.AppendLine($"**Grille tarifaire (à mentionner brièvement, sans détailler les prix dans {messageWord} lui-même)** : {pricingPageUrl}");
+
+        sb.AppendLine();
+
+        sb.AppendLine("---");
+        sb.AppendLine();
+        sb.AppendLine("Consignes :");
+        if (isEmail)
+        {
+            sb.AppendLine("- Ton professionnel mais chaleureux, direct, pas de jargon marketing ni de formules impersonnelles (\"Cher Monsieur, Chère Madame\").");
+            sb.AppendLine("- 100 à 150 mots maximum.");
+            sb.AppendLine("- Explique en une phrase que le commerce n'a pas encore de site, mentionne la maquette déjà prête à regarder (avec le lien si disponible), et propose un échange rapide si ça l'intéresse.");
+            if (!string.IsNullOrWhiteSpace(companyWebsiteUrl))
+                sb.AppendLine("- Glisse le lien de notre site en signature, comme preuve que c'est une vraie entreprise, sans trop insister dessus.");
+            sb.AppendLine("- Termine par une signature simple, sans nom d'entreprise inventé.");
+            sb.Append("- Réponds uniquement avec deux blocs clairement séparés : \"Objet : ...\" puis \"Corps : ...\" (le corps peut contenir de simples sauts de ligne, pas besoin de HTML).");
+        }
+        else
+        {
+            sb.AppendLine($"- Ton chaleureux, direct et décontracté, adapté à un message privé sur {canalLabel} (pas un email formel) : pas de \"Bonjour Madame/Monsieur\", plutôt une accroche naturelle.");
+            sb.AppendLine("- 50 à 80 mots maximum, format court adapté à un message privé.");
+            sb.AppendLine("- Explique en une phrase que le commerce n'a pas encore de site, mentionne la maquette déjà prête à regarder (avec le lien si disponible), et propose un échange rapide si ça l'intéresse.");
+            if (!string.IsNullOrWhiteSpace(companyWebsiteUrl))
+                sb.AppendLine("- Glisse le lien de notre site en signature, comme preuve que c'est une vraie entreprise, sans trop insister dessus.");
+            sb.AppendLine("- Termine par une signature simple, sans nom d'entreprise inventé.");
+            sb.Append("- Réponds uniquement avec le texte du message, prêt à copier-coller directement, sans \"Objet :\" ni formule d'email.");
+        }
+
+        return sb.ToString();
+    }
+
     private async Task<GooglePlaceEnrichment?> GetPlaceEnrichmentAsync(string placeId, string apiKey)
     {
         var url = $"https://places.googleapis.com/v1/places/{placeId}?fields=accessibilityOptions,paymentOptions,parkingOptions,photos";
@@ -329,27 +447,34 @@ public class ProspectDiscoveryController : ControllerBase
         return urls;
     }
 
-    private static string BuildMockupPrompt(Prospect prospect, GooglePlaceDetailsResult details, GooglePlaceEnrichment? enrichment, List<string> photoUrls, List<string> customPhotoUrls)
+    private static List<GoogleReview> SelectRepresentativeReviews(List<GoogleReview>? reviews, int max = 3)
     {
-        var candidateReviews = (details.Reviews ?? new List<GoogleReview>())
+        var candidateReviews = (reviews ?? new List<GoogleReview>())
             .Where(r => !string.IsNullOrWhiteSpace(r.Text))
             .ToList();
 
-        var reviews = candidateReviews
+        var selected = candidateReviews
             .Where(r => (r.Rating ?? 0) >= 4)
             .OrderByDescending(r => r.Rating ?? 0)
             .ThenBy(r => r.Text!.Length)
-            .Take(3)
+            .Take(max)
             .ToList();
 
-        if (reviews.Count == 0)
+        if (selected.Count == 0)
         {
-            reviews = candidateReviews
+            selected = candidateReviews
                 .OrderByDescending(r => r.Rating ?? 0)
                 .ThenBy(r => r.Text!.Length)
-                .Take(3)
+                .Take(max)
                 .ToList();
         }
+
+        return selected;
+    }
+
+    private static string BuildMockupPrompt(Prospect prospect, GooglePlaceDetailsResult details, GooglePlaceEnrichment? enrichment, List<string> photoUrls, List<string> customPhotoUrls)
+    {
+        var reviews = SelectRepresentativeReviews(details.Reviews);
 
         var sb = new StringBuilder();
         sb.AppendLine("Crée une maquette de site vitrine pour ce commerce local, à partir des informations de sa fiche Google Business.");
@@ -423,7 +548,9 @@ public class ProspectDiscoveryController : ControllerBase
         sb.AppendLine();
         sb.AppendLine("Important : conçois en mobile-first, la majorité des visiteurs de ce type de commerce consultent le site depuis leur téléphone. Boutons et zones cliquables assez grands pour le doigt, texte lisible sans zoomer, sections empilées verticalement, temps de chargement rapide (images optimisées). Vérifie ensuite que le rendu reste cohérent sur tablette et desktop.");
         sb.AppendLine();
-        sb.Append("Attention scroll mobile : n'utilise pas de `height: 100vh` ni d'`overflow: hidden` fixe sur le body, le html ou un conteneur englobant la page — ça empêche de scroller jusqu'en bas sur mobile et coupe le contenu (notamment le call-to-action final). La page doit pouvoir scroller normalement sur toute sa hauteur, sans zone de contenu tronquée.");
+        sb.AppendLine("Attention scroll mobile : n'utilise pas de `height: 100vh` ni d'`overflow: hidden` fixe sur le body, le html ou un conteneur englobant la page — ça empêche de scroller jusqu'en bas sur mobile et coupe le contenu (notamment le call-to-action final). La page doit pouvoir scroller normalement sur toute sa hauteur, sans zone de contenu tronquée.");
+        sb.AppendLine();
+        sb.Append("Important : ajoute un bandeau discret juste en dessous du header (pas superposé dessus) indiquant qu'il s'agit d'un aperçu, par exemple « Aperçu de maquette — site pas encore en ligne ». Ce bandeau doit rester lisible mais sobre (ne pas dominer visuellement la page), pour éviter que le commerçant ne croie que son site est déjà en ligne.");
 
         return sb.ToString();
     }

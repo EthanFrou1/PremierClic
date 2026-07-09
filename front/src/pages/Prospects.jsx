@@ -1,14 +1,17 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { googleBusinessUrl } from '../utils/google'
 import { STATUS_ORDER, statusMeta } from '../utils/status'
 import { loadGoogleMapsScript } from '../utils/loadGoogleMaps'
 
 export default function Prospects(){
+  const navigate = useNavigate()
   const [list, setList] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
-  const [filters, setFilters] = useState({ statut: '', categorie: '', ville: '' })
+  const [filters, setFilters] = useState({ statut: '', categorie: '', ville: '', maquette: '' })
+  const [villeOptions, setVilleOptions] = useState([])
+  const [categorieOptions, setCategorieOptions] = useState([])
   const [importing, setImporting] = useState(false)
   const [resultModal, setResultModal] = useState(null)
   const [refreshingId, setRefreshingId] = useState(null)
@@ -47,7 +50,17 @@ export default function Prospects(){
     }
   }, [googleConfigOpen])
 
-  useEffect(() => { fetchList() }, [])
+  useEffect(() => { fetchList() }, [filters.statut, filters.categorie, filters.ville])
+
+  useEffect(() => {
+    fetch((import.meta.env.VITE_API_BASE_URL || '') + '/api/prospects')
+      .then(res => res.ok ? res.json() : [])
+      .then(data => {
+        setVilleOptions([...new Set(data.map(p => p.ville).filter(Boolean))].sort())
+        setCategorieOptions([...new Set(data.map(p => p.categorie).filter(Boolean))].sort())
+      })
+      .catch(() => {})
+  }, [])
 
   async function fetchList(){
     setLoading(true); setError(null)
@@ -65,6 +78,13 @@ export default function Prospects(){
   }
 
   function handleFilterChange(e){ setFilters({ ...filters, [e.target.name]: e.target.value }) }
+
+  const filteredList = list.filter(p => {
+    if (filters.maquette === 'aucune') return !p.hasMockup
+    if (filters.maquette === 'ajoutee') return p.hasMockup && !p.hasDeployedMockup
+    if (filters.maquette === 'deployee') return p.hasDeployedMockup
+    return true
+  })
 
   async function handleDiscovery() {
     setImporting(true)
@@ -182,10 +202,24 @@ export default function Prospects(){
       </div>
 
       <div className="mb-4 flex flex-col gap-3 sm:flex-row">
-        <input name="statut" placeholder="Statut" value={filters.statut} onChange={handleFilterChange} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2" />
-        <input name="categorie" placeholder="Catégorie" value={filters.categorie} onChange={handleFilterChange} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2" />
-        <input name="ville" placeholder="Ville" value={filters.ville} onChange={handleFilterChange} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2" />
-        <button onClick={fetchList} className="rounded-xl bg-slate-900 px-5 py-2 text-sm font-semibold text-white hover:bg-slate-700">Filtrer</button>
+        <select name="statut" value={filters.statut} onChange={handleFilterChange} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+          <option value="">Tous les statuts</option>
+          {STATUS_ORDER.map(s => <option key={s} value={s}>{statusMeta(s).label}</option>)}
+        </select>
+        <select name="categorie" value={filters.categorie} onChange={handleFilterChange} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+          <option value="">Toutes les catégories</option>
+          {categorieOptions.map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
+        <select name="ville" value={filters.ville} onChange={handleFilterChange} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+          <option value="">Toutes les villes</option>
+          {villeOptions.map(v => <option key={v} value={v}>{v}</option>)}
+        </select>
+        <select name="maquette" value={filters.maquette} onChange={handleFilterChange} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+          <option value="">Maquette : toutes</option>
+          <option value="aucune">Sans maquette</option>
+          <option value="ajoutee">Maquette ajoutée</option>
+          <option value="deployee">Maquette déployée</option>
+        </select>
       </div>
 
       {loading && <div className="mb-4 rounded-3xl bg-slate-50 p-4 text-sm text-slate-600 shadow-sm shadow-slate-200">Chargement des prospects...</div>}
@@ -199,16 +233,21 @@ export default function Prospects(){
               <th className="px-4 py-3">Statut</th>
               <th className="px-4 py-3">Ville</th>
               <th className="px-4 py-3">Email</th>
+              <th className="px-4 py-3">Maquette</th>
               <th className="px-4 py-3">Actions</th>
             </tr>
           </thead>
           <tbody>
-            {list.map(p => {
+            {filteredList.map(p => {
               const meta = statusMeta(p.statut)
               return (
-                <tr key={p.id} className={`border-t border-slate-200 ${meta.row}`}>
+                <tr
+                  key={p.id}
+                  onClick={() => navigate(`/prospects/${p.id}`)}
+                  className={`cursor-pointer border-t border-slate-200 hover:bg-slate-100 ${meta.row}`}
+                >
                   <td className="px-4 py-3">
-                    <a href={googleBusinessUrl(p)} target="_blank" rel="noreferrer" className="text-sky-700 hover:underline">
+                    <a href={googleBusinessUrl(p)} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} className="text-sky-700 hover:underline">
                       {p.nom}
                     </a>
                   </td>
@@ -221,23 +260,35 @@ export default function Prospects(){
                   <td className="px-4 py-3">{p.ville}</td>
                   <td className="px-4 py-3">{p.email}</td>
                   <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <Link to={`/prospects/${p.id}`} className="rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold text-white hover:bg-slate-700">Voir</Link>
-                      <button
-                        onClick={() => handleRefreshOne(p.id)}
-                        disabled={refreshingId === p.id}
-                        className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-800 hover:bg-amber-200 disabled:opacity-50"
-                      >
-                        {refreshingId === p.id ? '...' : 'Rafraîchir'}
-                      </button>
-                    </div>
+                    {p.hasDeployedMockup ? (
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+                        Déployée
+                      </span>
+                    ) : p.hasMockup ? (
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-700">
+                        <span className="h-1.5 w-1.5 rounded-full bg-amber-500"></span>
+                        Ajoutée
+                      </span>
+                    ) : (
+                      <span className="text-xs text-slate-400">—</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    <button
+                      onClick={e => { e.stopPropagation(); handleRefreshOne(p.id) }}
+                      disabled={refreshingId === p.id}
+                      className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-800 hover:bg-amber-200 disabled:opacity-50"
+                    >
+                      {refreshingId === p.id ? '...' : 'Rafraîchir'}
+                    </button>
                   </td>
                 </tr>
               )
             })}
-            {list.length === 0 && !loading && (
+            {filteredList.length === 0 && !loading && (
               <tr>
-                <td colSpan="5" className="px-4 py-8 text-center text-sm text-slate-500">Aucun prospect trouvé. Lance une importation pour commencer.</td>
+                <td colSpan="6" className="px-4 py-8 text-center text-sm text-slate-500">Aucun prospect trouvé. Lance une importation pour commencer.</td>
               </tr>
             )}
           </tbody>

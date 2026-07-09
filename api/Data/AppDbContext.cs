@@ -13,6 +13,7 @@ public class AppDbContext : DbContext
     public DbSet<EmailTemplate> EmailTemplates => Set<EmailTemplate>();
     public DbSet<User> Users => Set<User>();
     public DbSet<ProspectPhotoLink> ProspectPhotoLinks => Set<ProspectPhotoLink>();
+    public DbSet<ProspectMessage> ProspectMessages => Set<ProspectMessage>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -23,5 +24,6 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<EmailTemplate>().HasKey(t => t.Id);
         modelBuilder.Entity<User>().HasKey(u => u.Id);
         modelBuilder.Entity<ProspectPhotoLink>().HasKey(p => p.Id);
+        modelBuilder.Entity<ProspectMessage>().HasKey(p => p.Id);
     }
 }

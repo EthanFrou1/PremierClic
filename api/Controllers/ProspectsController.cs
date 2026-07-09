@@ -23,7 +23,34 @@ public class ProspectsController : ControllerBase
         if (!string.IsNullOrEmpty(categorie)) q = q.Where(p => p.Categorie == categorie);
         if (!string.IsNullOrEmpty(ville)) q = q.Where(p => p.Ville == ville);
         var list = await q.ToListAsync();
-        return Ok(list);
+
+        var deployedByProspect = await _db.Mockups
+            .GroupBy(m => m.ProspectId)
+            .Select(g => new { ProspectId = g.Key, HasDeployedMockup = g.Any(m => m.UrlPreview != null) })
+            .ToDictionaryAsync(x => x.ProspectId, x => x.HasDeployedMockup);
+
+        var result = list.Select(p => new
+        {
+            p.Id,
+            p.Nom,
+            p.Categorie,
+            p.Adresse,
+            p.Ville,
+            p.CodePostal,
+            p.Telephone,
+            p.Email,
+            p.SourceDonnees,
+            p.GooglePlaceId,
+            p.ADejaUnSiteWeb,
+            p.Statut,
+            p.Notes,
+            p.DateCreation,
+            p.DateDerniereMaj,
+            HasMockup = deployedByProspect.ContainsKey(p.Id),
+            HasDeployedMockup = deployedByProspect.TryGetValue(p.Id, out var deployed) && deployed
+        });
+
+        return Ok(result);
     }
 
     [HttpGet("{id}")]

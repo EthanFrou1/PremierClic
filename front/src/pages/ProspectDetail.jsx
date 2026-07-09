@@ -10,13 +10,9 @@ export default function ProspectDetail() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
-  const [emailState, setEmailState] = useState({ subject: '', bodyHtml: '' })
-  const [mockupComment, setMockupComment] = useState('')
   const [mockupUrl, setMockupUrl] = useState('')
   const [uploadFile, setUploadFile] = useState(null)
   const [message, setMessage] = useState('')
-  const [htmlFile, setHtmlFile] = useState(null)
-  const [deploying, setDeploying] = useState(false)
   const [deployMessage, setDeployMessage] = useState('')
   const [refreshing, setRefreshing] = useState(false)
   const [refreshMessage, setRefreshMessage] = useState('')
@@ -24,10 +20,17 @@ export default function ProspectDetail() {
   const [mockupPromptLoading, setMockupPromptLoading] = useState(false)
   const [mockupPromptError, setMockupPromptError] = useState('')
   const [mockupPromptCopied, setMockupPromptCopied] = useState(false)
-  const [emailPrepared, setEmailPrepared] = useState(null)
-  const [emailPreparing, setEmailPreparing] = useState(false)
-  const [emailMarking, setEmailMarking] = useState(false)
-  const [emailCopiedField, setEmailCopiedField] = useState(null)
+  const [emailPrompt, setEmailPrompt] = useState('')
+  const [emailPromptLoading, setEmailPromptLoading] = useState(false)
+  const [emailPromptError, setEmailPromptError] = useState('')
+  const [emailPromptCopied, setEmailPromptCopied] = useState(false)
+  const [emailPromptHasMockupUrl, setEmailPromptHasMockupUrl] = useState(true)
+  const [savedMessages, setSavedMessages] = useState([])
+  const [messageCanal, setMessageCanal] = useState('Instagram')
+  const [messageDraft, setMessageDraft] = useState('')
+  const [messageSaving, setMessageSaving] = useState(false)
+  const [messageError, setMessageError] = useState('')
+  const [messageCopiedId, setMessageCopiedId] = useState(null)
   const [photoLinks, setPhotoLinks] = useState([])
   const [photoLinkInput, setPhotoLinkInput] = useState('')
   const [photoLinkAdding, setPhotoLinkAdding] = useState(false)
@@ -47,11 +50,19 @@ export default function ProspectDetail() {
       setProspect(data)
       await fetchMockups()
       await fetchPhotoLinks()
+      await fetchMessages()
     } catch (err) {
       setError(err.message)
     } finally {
       setLoading(false)
     }
+  }
+
+  async function fetchMessages() {
+    const res = await fetch((import.meta.env.VITE_API_BASE_URL || '') + `/api/prospects/${id}/prospectmessages`)
+    if (!res.ok) return
+    const data = await res.json()
+    setSavedMessages(data)
   }
 
   async function fetchMockups() {
@@ -137,7 +148,6 @@ export default function ProspectDetail() {
       if (uploadFile) {
         const formData = new FormData()
         formData.append('file', uploadFile)
-        formData.append('commentaire', mockupComment)
         const res = await fetch((import.meta.env.VITE_API_BASE_URL || '') + `/api/prospects/${id}/mockups/upload`, {
           method: 'POST',
           body: formData
@@ -147,12 +157,11 @@ export default function ProspectDetail() {
         const res = await fetch((import.meta.env.VITE_API_BASE_URL || '') + `/api/prospects/${id}/mockups`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ urlPreview: mockupUrl, commentaire: mockupComment })
+          body: JSON.stringify({ urlPreview: mockupUrl })
         })
         if (!res.ok) throw new Error('Échec de l’ajout de la maquette')
       }
       setMockupUrl('')
-      setMockupComment('')
       setUploadFile(null)
       setMessage('Maquette ajoutée.')
       await fetchMockups()
@@ -161,34 +170,20 @@ export default function ProspectDetail() {
     }
   }
 
-  async function handleDeployToNetlify() {
+  async function handleDeployExistingMockup(mockupId) {
     setDeployMessage('')
-    if (!htmlFile) {
-      setDeployMessage('Choisis le fichier HTML exporté de Claude Design.')
-      return
-    }
-
-    setDeploying(true)
     try {
-      const formData = new FormData()
-      formData.append('file', htmlFile)
-      formData.append('commentaire', mockupComment)
-      const res = await fetch((import.meta.env.VITE_API_BASE_URL || '') + `/api/prospects/${id}/mockups/deploy`, {
-        method: 'POST',
-        body: formData
+      const res = await fetch((import.meta.env.VITE_API_BASE_URL || '') + `/api/prospects/${id}/mockups/${mockupId}/deploy`, {
+        method: 'POST'
       })
       if (!res.ok) {
         const text = await res.text()
         throw new Error(text || 'Échec du déploiement Netlify')
       }
-      setHtmlFile(null)
-      setMockupComment('')
       setDeployMessage('Maquette déployée sur Netlify.')
       await fetchMockups()
     } catch (err) {
       setDeployMessage(err.message)
-    } finally {
-      setDeploying(false)
     }
   }
 
@@ -254,59 +249,83 @@ export default function ProspectDetail() {
     }
   }
 
-  async function handlePrepareEmail() {
-    if (!prospect) return
-    setMessage('')
-    setEmailPreparing(true)
+  async function handleGenerateEmailPrompt() {
+    setEmailPromptLoading(true)
+    setEmailPromptError('')
+    setEmailPromptCopied(false)
     try {
-      const res = await fetch((import.meta.env.VITE_API_BASE_URL || '') + '/api/email/prepare', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prospectId: id, subject: emailState.subject, bodyHtml: emailState.bodyHtml })
-      })
+      const res = await fetch((import.meta.env.VITE_API_BASE_URL || '') + `/api/prospects/discover/google/email-prompt/${id}?canal=${encodeURIComponent(messageCanal)}`)
       if (!res.ok) {
         const text = await res.text()
-        throw new Error(text || 'Erreur de préparation de l\'email')
+        throw new Error(text || 'Erreur de génération du prompt')
       }
       const payload = await res.json()
-      setEmailPrepared(payload)
+      setEmailPrompt(payload.prompt)
+      setEmailPromptHasMockupUrl(payload.hasMockupUrl)
     } catch (err) {
-      setMessage(err.message)
+      setEmailPromptError(err.message || 'Erreur inconnue')
     } finally {
-      setEmailPreparing(false)
+      setEmailPromptLoading(false)
     }
   }
 
-  async function handleCopyEmailField(field, value) {
+  async function handleCopyEmailPrompt() {
+    if (!emailPrompt) return
     try {
-      await navigator.clipboard.writeText(value)
-      setEmailCopiedField(field)
-      setTimeout(() => setEmailCopiedField(null), 2000)
+      await navigator.clipboard.writeText(emailPrompt)
+      setEmailPromptCopied(true)
+      setTimeout(() => setEmailPromptCopied(false), 2000)
     } catch {
-      setMessage('Impossible de copier automatiquement, sélectionne le texte manuellement.')
+      setEmailPromptError('Impossible de copier automatiquement, sélectionne le texte manuellement.')
     }
   }
 
-  async function handleMarkSent() {
-    if (!prospect) return
-    setEmailMarking(true)
-    setMessage('')
+  async function handleSaveMessage() {
+    setMessageError('')
+    if (!messageDraft.trim()) {
+      setMessageError('Colle le message généré par Claude avant d\'enregistrer.')
+      return
+    }
+
+    setMessageSaving(true)
     try {
-      const res = await fetch((import.meta.env.VITE_API_BASE_URL || '') + '/api/email/mark-sent', {
+      const res = await fetch((import.meta.env.VITE_API_BASE_URL || '') + `/api/prospects/${id}/prospectmessages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prospectId: id, subject: emailState.subject, bodyHtml: emailState.bodyHtml })
+        body: JSON.stringify({ canal: messageCanal, prompt: emailPrompt, message: messageDraft.trim() })
       })
       if (!res.ok) {
         const text = await res.text()
-        throw new Error(text || 'Erreur lors du marquage')
+        throw new Error(text || 'Échec de l\'enregistrement du message')
       }
-      setMessage('Email marqué comme envoyé.')
-      setEmailPrepared(null)
+      setMessageDraft('')
+      await fetchMessages()
     } catch (err) {
-      setMessage(err.message)
+      setMessageError(err.message)
     } finally {
-      setEmailMarking(false)
+      setMessageSaving(false)
+    }
+  }
+
+  async function handleCopyMessage(m) {
+    try {
+      await navigator.clipboard.writeText(m.message)
+      setMessageCopiedId(m.id)
+      setTimeout(() => setMessageCopiedId(null), 2000)
+    } catch {
+      setMessageError('Impossible de copier automatiquement, sélectionne le texte manuellement.')
+    }
+  }
+
+  async function handleDeleteMessage(messageId) {
+    try {
+      const res = await fetch((import.meta.env.VITE_API_BASE_URL || '') + `/api/prospects/${id}/prospectmessages/${messageId}`, {
+        method: 'DELETE'
+      })
+      if (!res.ok) throw new Error('Échec de la suppression')
+      await fetchMessages()
+    } catch (err) {
+      setMessageError(err.message)
     }
   }
 
@@ -488,100 +507,112 @@ export default function ProspectDetail() {
                 placeholder="https://..."
                 className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2"
               />
-              <label className="block text-sm font-medium text-slate-700">Commentaire</label>
-              <input
-                value={mockupComment}
-                onChange={e => setMockupComment(e.target.value)}
-                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2"
-              />
-              <label className="block text-sm font-medium text-slate-700">Ou upload d’image</label>
-              <input type="file" accept="image/*" onChange={e => setUploadFile(e.target.files?.[0] || null)} className="w-full text-sm text-slate-700" />
+              <label className="block text-sm font-medium text-slate-700">Ou upload d’un fichier (image, ou export HTML Claude Design)</label>
+              <input type="file" accept="image/*,.html" onChange={e => setUploadFile(e.target.files?.[0] || null)} className="w-full text-sm text-slate-700" />
+              <p className="text-xs text-slate-500">Pour un export HTML, un bouton « Déployer sur Netlify » apparaîtra sur la maquette dans la liste ci-dessous une fois ajoutée.</p>
               <button onClick={handleAddMockup} className="mt-3 w-full rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-700">Ajouter maquette</button>
             </div>
-            <div className="mt-5 border-t border-slate-100 pt-5 space-y-3">
-              <label className="block text-sm font-medium text-slate-700">Déployer un export HTML (Claude Design) sur Netlify</label>
-              <input type="file" accept=".html" onChange={e => setHtmlFile(e.target.files?.[0] || null)} className="w-full text-sm text-slate-700" />
-              <button
-                onClick={handleDeployToNetlify}
-                disabled={deploying}
-                className="w-full rounded-xl bg-teal-600 px-5 py-3 text-sm font-semibold text-white hover:bg-teal-500 disabled:opacity-50"
-              >
-                {deploying ? 'Déploiement...' : 'Déployer sur Netlify'}
-              </button>
-              {deployMessage && <p className="text-sm text-slate-700">{deployMessage}</p>}
-            </div>
             <div className="mt-5 space-y-3">
+              {deployMessage && <p className="text-sm text-slate-700">{deployMessage}</p>}
               {mockups.length === 0 && <div className="text-sm text-slate-500">Aucune maquette ajoutée.</div>}
               {mockups.map(m => (
                 <div key={m.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
                   <p className="text-sm font-semibold text-slate-800">{m.commentaire || 'Maquette'}</p>
                   {m.urlPreview && <a href={m.urlPreview} target="_blank" rel="noreferrer" className="text-sm text-sky-700">Voir la maquette</a>}
                   {m.path && <span className="text-sm text-slate-600 block">Fichier uploadé : {m.path}</span>}
+                  {m.path && (
+                    <button
+                      onClick={() => handleDeployExistingMockup(m.id)}
+                      className="mt-2 rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-teal-500"
+                    >
+                      {m.urlPreview ? 'Redéployer sur Netlify' : 'Déployer sur Netlify'}
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
           </section>
 
           <section className="rounded-3xl bg-white p-6 shadow-sm shadow-slate-200">
-            <h3 className="text-lg font-semibold">Email de prospection</h3>
-            <label className="block text-sm font-medium text-slate-700">Sujet</label>
-            <input
-              value={emailState.subject}
-              onChange={e => setEmailState({ ...emailState, subject: e.target.value })}
-              placeholder="Sujet de l'email"
-              className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2"
-            />
-            <label className="mt-4 block text-sm font-medium text-slate-700">Contenu HTML</label>
-            <textarea
-              value={emailState.bodyHtml}
-              onChange={e => setEmailState({ ...emailState, bodyHtml: e.target.value })}
-              rows={6}
-              placeholder="Bonjour {{nom}}, ..."
-              className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2"
-            />
-            <button
-              onClick={handlePrepareEmail}
-              disabled={emailPreparing}
-              className="mt-4 w-full rounded-xl bg-emerald-600 px-5 py-3 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-50"
+            <h3 className="text-lg font-semibold">Message de prospection</h3>
+            <p className="text-sm text-slate-500">Génère un prompt prêt à coller dans Claude, avec les infos du commerce, les avis et le lien de la maquette déployée. Le prompt s'adapte au canal choisi (email formel, ou message court pour Instagram/WhatsApp).</p>
+            <label className="mt-3 block text-sm font-medium text-slate-700">Canal</label>
+            <select
+              value={messageCanal}
+              onChange={e => setMessageCanal(e.target.value)}
+              className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm"
             >
-              {emailPreparing ? 'Préparation...' : 'Préparer l\'email'}
+              <option value="Email">Email</option>
+              <option value="Instagram">Instagram</option>
+              <option value="WhatsApp">WhatsApp</option>
+              <option value="Autre">Autre</option>
+            </select>
+            <button
+              onClick={handleGenerateEmailPrompt}
+              disabled={emailPromptLoading}
+              className="mt-3 w-full rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-700 disabled:opacity-50"
+            >
+              {emailPromptLoading ? 'Génération...' : 'Générer le prompt'}
             </button>
-            <p className="mt-3 text-xs text-slate-500">{"Utilise {{nom}} et {{unsubscribeUrl}} dans le sujet ou le corps pour personnaliser."}</p>
-
-            {emailPrepared && (
-              <div className="mt-4 space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                <div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Objet</span>
-                    <button
-                      onClick={() => handleCopyEmailField('subject', emailPrepared.subject)}
-                      className="text-xs font-semibold text-sky-700 hover:underline"
-                    >
-                      {emailCopiedField === 'subject' ? 'Copié !' : 'Copier'}
-                    </button>
-                  </div>
-                  <p className="mt-1 text-sm text-slate-800">{emailPrepared.subject}</p>
-                </div>
-                <div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Corps</span>
-                    <button
-                      onClick={() => handleCopyEmailField('body', emailPrepared.bodyHtml)}
-                      className="text-xs font-semibold text-sky-700 hover:underline"
-                    >
-                      {emailCopiedField === 'body' ? 'Copié !' : 'Copier'}
-                    </button>
-                  </div>
-                  <textarea readOnly value={emailPrepared.bodyHtml} rows={6} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700" />
-                </div>
-                <p className="text-xs text-slate-500">Colle l'objet et le corps dans ton client mail (Gmail...), envoie depuis ta boîte, puis confirme ici.</p>
+            {emailPromptError && <p className="mt-2 text-sm text-rose-700">{emailPromptError}</p>}
+            {emailPrompt && (
+              <div className="mt-4 space-y-2">
+                {!emailPromptHasMockupUrl && (
+                  <p className="text-xs text-amber-700">Aucune maquette déployée pour ce prospect — le prompt généré n'inclut pas de lien. Déploie d'abord une maquette pour un message plus convaincant.</p>
+                )}
+                <textarea
+                  readOnly
+                  value={emailPrompt}
+                  rows={10}
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700"
+                />
                 <button
-                  onClick={handleMarkSent}
-                  disabled={emailMarking}
-                  className="w-full rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700 disabled:opacity-50"
+                  onClick={handleCopyEmailPrompt}
+                  className="w-full rounded-xl bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-500"
                 >
-                  {emailMarking ? 'Enregistrement...' : 'Marquer comme envoyé'}
+                  {emailPromptCopied ? 'Copié !' : 'Copier le prompt'}
                 </button>
+              </div>
+            )}
+
+            <div className="mt-5 border-t border-slate-100 pt-5 space-y-3">
+              <label className="block text-sm font-medium text-slate-700">Message généré par Claude</label>
+              <textarea
+                value={messageDraft}
+                onChange={e => setMessageDraft(e.target.value)}
+                rows={6}
+                placeholder="Colle ici le message renvoyé par Claude..."
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm"
+              />
+              <p className="text-xs text-slate-500">Sera enregistré avec le canal sélectionné ci-dessus ({messageCanal}).</p>
+              <button
+                onClick={handleSaveMessage}
+                disabled={messageSaving}
+                className="w-full rounded-xl bg-emerald-600 px-5 py-3 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-50"
+              >
+                {messageSaving ? 'Enregistrement...' : 'Enregistrer le message'}
+              </button>
+              {messageError && <p className="text-sm text-rose-700">{messageError}</p>}
+            </div>
+
+            {savedMessages.length > 0 && (
+              <div className="mt-5 space-y-3 border-t border-slate-100 pt-5">
+                {savedMessages.map(m => (
+                  <div key={m.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                    <div className="flex items-center justify-between">
+                      <span className="rounded-full bg-slate-900 px-2.5 py-0.5 text-xs font-semibold text-white">{m.canal || 'Autre'}</span>
+                      <div className="flex items-center gap-3">
+                        <button onClick={() => handleCopyMessage(m)} className="text-xs font-semibold text-sky-700 hover:underline">
+                          {messageCopiedId === m.id ? 'Copié !' : 'Copier'}
+                        </button>
+                        <button onClick={() => handleDeleteMessage(m.id)} className="text-xs font-semibold text-rose-700 hover:underline">
+                          Supprimer
+                        </button>
+                      </div>
+                    </div>
+                    <p className="mt-2 whitespace-pre-wrap text-sm text-slate-800">{m.message}</p>
+                  </div>
+                ))}
               </div>
             )}
           </section>

@@ -24,7 +24,7 @@ L'application doit faciliter :
 - Authentification de connexion avec un endpoint `api/auth/login`.
 - Modèles EF Core et migrations pour la structure de données.
 - Endpoints CRUD pour les prospects : création, lecture, mise à jour, suppression.
-- Recherche de prospects avec filtres par statut, catégorie et ville.
+- Recherche de prospects avec filtres par statut, catégorie et ville. La liste (`GET /api/prospects`) renvoie aussi `hasMockup` / `hasDeployedMockup` par prospect (calculé côté serveur à partir des `Mockups` liés) pour affichage direct côté front.
 - Import automatique de prospects via CSV ou JSON.
 - Fonctionnalités de découverte automatique : intégration d'une recherche locale (Overpass / Google Places) et import de commerces.
 - Résolution automatique de la fiche Google Place d'un prospect (`place_id`), avec repli sur une recherche par nom/adresse (Find Place From Text) si l'identifiant n'est pas connu.
@@ -32,34 +32,43 @@ L'application doit faciliter :
   - coordonnées, horaires d'ouverture, adresse,
   - avis clients les mieux notés (filtrés ≥ 4 étoiles, tronqués et priorisés par concision),
   - informations pratiques via l'API Google Places (New) : accessibilité, moyens de paiement, stationnement,
-  - photos officielles de l'établissement uniquement (détection par correspondance du nom de l'auteur avec le nom du commerce, pour exclure les photos d'avis clients),
-  - consignes intégrées au prompt pour un rendu mobile-first et sans bug de scroll.
-- Préparation d'emails de prospection à envoyer manuellement (`POST /api/email/prepare` puis `POST /api/email/mark-sent`) : l'objet et le corps (avec templates et placeholders `{{nom}}`, `{{email}}`, `{{unsubscribeUrl}}`) sont générés côté back-end pour être copiés dans sa propre boîte mail, plutôt qu'un envoi automatique via SMTP — meilleure délivrabilité et suivi CRM conservé via l'enregistrement `EmailEnvoye`.
-- Gestion de templates d'email.
-- **Déploiement automatique des maquettes sur Netlify depuis l'app** (`POST /api/prospects/{id}/mockups/deploy`) : upload d'un export HTML (Claude Design), zippé à la volée côté serveur et poussé vers l'API Netlify (`/sites/{siteId}/deploys`, auth par `NETLIFY_API_TOKEN`/`NETLIFY_SITE_ID`), le lien de déploiement obtenu est enregistré automatiquement comme `Mockup` — plus besoin de coller le lien à la main.
-- **Photos personnalisées par prospect** (`ProspectPhotosController`, modèle `ProspectPhoto`) : upload multi-fichiers, liste et suppression (`GET/POST/DELETE /api/prospects/{id}/prospectphotos`), fichiers servis en statique via `/uploads/photos/...`. Ces photos sont automatiquement ajoutées au prompt de maquette (section « Photos supplémentaires sélectionnées manuellement »), en complément des photos officielles Google.
+  - photos officielles de l'établissement uniquement (comparées au vrai nom de la fiche Google Business, pas au nom saisi côté prospect, pour éviter les faux négatifs),
+  - liens photo ajoutés manuellement (`ProspectPhotoLink`) et note indiquant que d'autres images seront collées directement dans la conversation Claude Design,
+  - consignes intégrées au prompt pour un rendu mobile-first, sans bug de scroll, et avec un bandeau « aperçu de maquette » sous le header (voir plus bas).
+- **Liens photo par prospect** (`ProspectPhotoLinksController`, modèle `ProspectPhotoLink`) : ajout/suppression d'URLs d'images directes (`GET/POST/DELETE /api/prospects/{id}/prospectphotolinks`), typiquement récupérées via Inspecter sur une photo Google Maps. Remplace l'ancien système d'upload de fichiers (`ProspectPhoto`, supprimé), Claude Design ne pouvant pas exploiter des URLs `localhost`.
+- **Déploiement automatique des maquettes sur Netlify depuis l'app** :
+  - `POST /api/prospects/{id}/mockups/deploy` : upload direct d'un export HTML, zip + déploiement Netlify en une étape.
+  - `POST /api/prospects/{id}/mockups/{mockupId}/deploy` : (re)déploie une maquette déjà uploadée côté serveur (fichier stocké via « Ajouter maquette »), sans devoir resélectionner le fichier dans le navigateur.
+  - Le zip inclut désormais un fichier `_headers` Netlify forçant `Content-Type: text/html; charset=UTF-8` (la méthode de déploiement par zip brut de Netlify sert sinon les pages en `text/plain`, non rendues par le navigateur).
+  - Un script est injecté automatiquement dans le HTML avant déploiement pour afficher un bandeau « Aperçu de maquette — site pas encore en ligne » juste sous le `<header>` détecté (avec retries sur quelques secondes pour les pages qui s'assemblent en JS), afin d'éviter qu'un commerçant ne croie que son site est déjà publié.
+  - Le lien de déploiement obtenu est enregistré automatiquement comme `Mockup` (`UrlPreview`).
+- **Message de prospection** (remplace l'ancien flux d'email avec placeholders/désinscription, jugé peu utile car l'email du commerçant est rarement disponible) :
+  - `GET /api/prospects/discover/google/email-prompt/{id}?canal=Email|Instagram|WhatsApp|Autre` : génère un prompt prêt à coller dans Claude, adapté au canal choisi (email formel avec Objet/Corps vs message court et décontracté pour réseaux sociaux), incluant les infos du commerce, des avis représentatifs, le lien de la maquette déployée si disponible, le lien du site de l'entreprise (`COMPANY_WEBSITE_URL`, en preuve sociale) et le lien de la grille tarifaire si configuré (`PRICING_PAGE_URL`).
+  - `ProspectMessagesController` (modèle `ProspectMessage`) : sauvegarde du prompt + du message final (collé après génération par Claude) + canal choisi, par prospect (`GET/POST/DELETE /api/prospects/{id}/prospectmessages`), pour retrouver et copier le message au moment de l'envoyer manuellement (Instagram, WhatsApp, etc.).
+- Ancien système d'emails avec templates/placeholders (`EmailController`, `EmailTemplate`, `EmailEnvoye`, désinscription) conservé côté backend mais retiré du parcours utilisateur front (plus utilisé pour l'instant).
 
 ### Front-end (`/front`)
 - Page de connexion sécurisée.
 - Interface prospects :
-  - affichage de la liste des prospects,
+  - liste des prospects avec **ligne entièrement cliquable** vers la fiche détail (plus de bouton « Voir »), lien Google Business et bouton « Rafraîchir » isolés du clic de ligne,
+  - colonne « Maquette » indiquant l'état (—, Ajoutée, Déployée) directement dans la liste,
+  - **filtres en listes déroulantes** (Statut, Catégorie, Ville — options dynamiques selon les prospects existants —, Maquette) appliqués automatiquement au changement, sans bouton « Filtrer »,
   - formulaire de création de prospect avec autocomplétion de ville via le widget natif `google.maps.places.Autocomplete`,
-  - filtres de recherche,
   - découverte automatique de prospects locaux.
 - Page de détail prospect (`/prospects/:id`) :
   - section « Prompt maquette » pour générer et copier en un clic le prompt Claude Design du prospect,
-  - section « Photos personnalisées » pour uploader ses propres photos de l'établissement (multi-fichiers, aperçu en grille, suppression), automatiquement injectées dans le prompt de maquette,
-  - section « Email de prospection » pour préparer l'objet/corps, copier chaque champ individuellement, puis confirmer l'envoi manuel via « Marquer comme envoyé »,
-  - section « Maquettes » pour centraliser les liens de maquettes livrées, avec un bouton « Déployer sur Netlify » qui prend en entrée l'export HTML de Claude Design et enregistre automatiquement le lien public une fois le déploiement terminé.
+  - section « Liens photos » pour coller des URLs d'images directes, injectées dans le prompt de maquette,
+  - section « Maquettes » : un seul champ d'upload (image ou export HTML), bouton « Ajouter maquette », puis bouton « Déployer sur Netlify »/« Redéployer sur Netlify » directement sur chaque maquette de la liste,
+  - section « Message de prospection » : sélecteur de canal (Email / Instagram / WhatsApp / Autre) → génération du prompt adapté → collage du message généré par Claude → sauvegarde, avec historique des messages enregistrés (copie / suppression).
 - Gestion des états de chargement et des erreurs.
 - Navigation basique entre les écrans.
 
 ### Outils annexes
-- Script `deploy-maquette.ps1` (racine du repo) : déploie une maquette HTML (export Claude Design) sur Netlify en une seule commande et copie automatiquement le lien public partageable dans le presse-papiers. Conservé comme solution de secours en ligne de commande, mais désormais complémentaire au bouton « Déployer sur Netlify » intégré dans l'app (plus besoin de setup Netlify CLI pour l'usage courant).
-- Site Netlify dédié `premierclic-maquettes` (id `0cd04bcc-b7e3-4225-a0ba-45a1c9b94b9a`) utilisé comme cible de déploiement par le bouton in-app et par le script.
+- Script `deploy-maquette.ps1` (racine du repo) : déploie une maquette HTML (export Claude Design) sur Netlify en une seule commande et copie automatiquement le lien public partageable dans le presse-papiers. Conservé comme solution de secours en ligne de commande.
+- Site Netlify dédié `premierclic-maquettes` (id `0cd04bcc-b7e3-4225-a0ba-45a1c9b94b9a`) utilisé comme cible de déploiement par le bouton in-app et par le script. Attention : site **partagé entre tous les prospects** — toujours utiliser le lien avec préfixe d'ID de déploiement (`https://<deploy-id>--premierclic-maquettes.netlify.app`), qui reste stable, plutôt que l'URL racine du site qui pointe vers le dernier déploiement en date.
 
 ### Données et modèles
-- Modèles métier existants : Prospect, User, EmailTemplate, EmailEnvoye, Mockup, ProspectPhoto.
+- Modèles métier existants : Prospect, User, EmailTemplate, EmailEnvoye, Mockup, ProspectPhotoLink, ProspectMessage.
 - Migrations EF Core pour initialiser la base de données.
 
 ## Points forts actuels
@@ -68,7 +77,7 @@ L'application doit faciliter :
 - Déploiement local reproductible via Docker Compose.
 - Fonctionnalités de base de prospection opérationnelles.
 - Import et découverte automatique déjà disponibles.
-- Chaîne de prospection quasi automatisée de bout en bout : découverte → enrichissement Google → prompt de maquette (+ photos perso) → maquette déployée sur Netlify en un clic → email prêt à envoyer, avec un minimum de saisie manuelle.
+- Chaîne de prospection quasi automatisée de bout en bout : découverte → enrichissement Google → prompt de maquette (+ liens photo) → maquette déployée sur Netlify en un clic (avec bandeau « aperçu ») → prompt de message de prospection adapté au canal (email/Instagram/WhatsApp) → message sauvegardé prêt à copier, avec un minimum de saisie manuelle.
 
 ## Idées et améliorations à faire plus tard
 
@@ -78,10 +87,11 @@ L'application doit faciliter :
 - Ajouter des catégories métiers et des labels personnalisés.
 - Ajouter un tableau de bord avec statistiques de conversion.
 - Ajouter un module de suivi des relances et des actions commerciales.
-- Ajouter un historique complet des emails envoyés par prospect (au-delà du simple "marquer comme envoyé") et des relances automatiques.
 - ~~Enregistrer automatiquement le lien de la maquette déployée (Netlify) dans la fiche prospect~~ → fait (bouton « Déployer sur Netlify » in-app).
-- Une fois l'API déployée avec un nom de domaine public (Coolify), les URLs de photos personnalisées (`/uploads/photos/...`) deviendront directement accessibles à Claude Design ; en local (`localhost`), Claude Design ne peut pas encore les télécharger automatiquement depuis le prompt généré.
-- Permettre la suppression d'un Mockup depuis la fiche prospect (actuellement possible uniquement pour les ProspectPhoto).
+- ~~Permettre la suppression d'un Mockup depuis la fiche prospect~~ → toujours pas fait pour les Mockups (seulement pour ProspectPhotoLink et ProspectMessage) ; à ajouter si les maquettes ratées/obsolètes s'accumulent.
+- Créer une page de tarifs statique (HTML stylée, à la manière d'un exemple déjà réalisé pour un client) et renseigner son URL dans `PRICING_PAGE_URL` pour qu'elle soit intégrée automatiquement aux prompts de message.
+- Marquer un message de prospection comme « envoyé » (au-delà du simple enregistrement) pour un vrai suivi CRM par canal.
+- Nettoyer/décommissionner l'ancien système d'email par templates (`EmailController`, `EmailTemplate`, `EmailEnvoye`, désinscription) s'il reste durablement inutilisé, ou le relier au nouveau système de messages si l'email redevient pertinent.
 
 ### Qualité et sécurité
 - Mettre en place une gestion des rôles (`admin`, `commercial`, `lecture seule`).
@@ -96,7 +106,7 @@ L'application doit faciliter :
 - Ajouter un mode sombre.
 
 ### Déploiement et maintenance
-- ~~Ajouter un fichier `.env.example` complet avec toutes les variables attendues~~ → fait (variables Netlify ajoutées ; une vraie clé Google Maps qui avait été committée par erreur dans `.env.example` a aussi été retirée et remplacée par un placeholder — `.env` reste correctement gitignoré).
+- ~~Ajouter un fichier `.env.example` complet avec toutes les variables attendues~~ → fait (variables Netlify + liens de prospection ajoutés ; une vraie clé Google Maps qui avait été committée par erreur dans `.env.example` a aussi été retirée et remplacée par un placeholder — `.env` reste correctement gitignoré).
 - Créer une documentation de déploiement pour Coolify / Docker.
 - Ajouter un script de backup de la base de données.
 - Mettre en place un pipeline CI/CD pour tests et déploiement.
@@ -107,28 +117,33 @@ L'application doit faciliter :
 [DATE] : 09/07/2026
 
 1) Tâches réalisées aujourd'hui
-- [x] Création du vrai site Netlify de déploiement des maquettes (`premierclic-maquettes`, id `0cd04bcc-b7e3-4225-a0ba-45a1c9b94b9a`), configuration de `NETLIFY_API_TOKEN` / `NETLIFY_SITE_ID` (`.env`, `.env.example`, `docker-compose.yml`)
-- [x] Bouton « Déployer sur Netlify » intégré dans la fiche prospect (`POST /api/prospects/{id}/mockups/deploy`) : upload d'un export HTML, zip côté serveur, envoi à l'API Netlify, enregistrement automatique du lien comme Mockup
-- [x] Fonctionnalité « Photos personnalisées » : modèle `ProspectPhoto` + migration `AddProspectPhotos`, `ProspectPhotosController` (GET/POST/DELETE), fichiers servis en statique via `/uploads`, section front dédiée (upload multi, grille d'aperçu, suppression)
-- [x] Intégration des photos personnalisées dans le prompt de maquette généré (`BuildMockupPrompt`)
-- [x] Correctif de sécurité : une vraie clé Google Maps committée par erreur dans `.env.example` a été retirée et remplacée par un placeholder
-- [x] Tests de bout en bout via curl (upload de photo, suppression, génération du prompt avec photos perso) contre les conteneurs Docker
+- [x] Remplacement des « Photos personnalisées » (upload de fichiers, inutilisable par Claude Design en local) par des « Liens photos » (`ProspectPhotoLink`, URLs directes récupérées via Inspecter sur Google Maps) — migrations `RemoveProspectPhotos` puis `AddProspectPhotoLinks`
+- [x] Correctif du matching des photos officielles Google (comparaison au vrai nom de la fiche Google Business au lieu du nom du prospect en base, qui pouvait différer)
+- [x] Fusion des champs d'upload de maquette (un seul champ image/HTML), suppression du bouton général « Déployer sur Netlify », déploiement désormais déclenché par maquette depuis la liste (`POST /api/prospects/{id}/mockups/{mockupId}/deploy`), avec support du redéploiement
+- [x] Correctif Netlify : les déploiements par zip brut étaient servis en `Content-Type: text/plain` (page affichée en texte brut au lieu d'être rendue) — ajout d'un fichier `_headers` dans le zip forçant `text/html`
+- [x] Correctif d'un bug `ZipArchive` (entrée suivante créée avant fermeture de la précédente) qui faisait planter le redéploiement
+- [x] Bandeau automatique « Aperçu de maquette — site pas encore en ligne » injecté sous le header de chaque maquette déployée (script avec retry, résistant aux pages qui s'assemblent en JS), + consigne équivalente ajoutée au prompt Claude Design
+- [x] Liste des prospects : colonne « Maquette » (état ajoutée/déployée/aucune), ligne entièrement cliquable vers la fiche détail, filtres passés en listes déroulantes (statut, catégorie, ville, maquette) appliqués automatiquement sans bouton « Filtrer »
+- [x] Suppression de l'ancien flux « Email de prospection » (objet/corps, placeholders, désinscription) jugé peu utile en pratique (email du commerçant rarement disponible)
+- [x] Nouveau système « Message de prospection » : prompt généré par canal (Email / Instagram / WhatsApp / Autre, formulation adaptée), sauvegarde du prompt + message final par prospect (`ProspectMessage`, migration `AddProspectMessages`), historique consultable/copiable/supprimable
+- [x] Intégration du lien du site de l'entreprise (`COMPANY_WEBSITE_URL`) comme preuve sociale dans le prompt de message, et d'un emplacement pour une future page de tarifs (`PRICING_PAGE_URL`, à renseigner une fois créée)
 
 2) Tâches en cours / à continuer
-- [ ] Vérifier en conditions réelles le bouton « Déployer sur Netlify » avec un vrai export Claude Design
-- [ ] Confirmer que Claude Design peut bien récupérer les photos personnalisées une fois l'API accessible publiquement (limite connue : URLs `localhost` non accessibles depuis l'extérieur)
+- [ ] Créer la page de tarifs statique (HTML stylée) et renseigner `PRICING_PAGE_URL`
+- [ ] Vérifier en conditions réelles l'envoi de messages de prospection générés (Instagram/WhatsApp) auprès de vrais commerçants
 
 3) Tâches à faire ensuite
 - [ ] Documentation de déploiement Coolify / Docker (nom de domaine public pour l'API)
-- [ ] Historique complet des emails envoyés par prospect
 - [ ] Suppression d'un Mockup depuis la fiche prospect
+- [ ] Décider du sort de l'ancien système d'email par templates (`EmailController`/`EmailTemplate`/`EmailEnvoye`), inutilisé côté front depuis aujourd'hui
 
 4) Blocages / décisions prises
-- [x] Décision : utiliser l'API de déploiement Netlify (zip direct) plutôt que le CLI depuis le back-end, pour permettre un déploiement en un clic depuis l'app sans dépendance à `netlify-cli` côté serveur
-- [x] Décision : conserver `deploy-maquette.ps1` comme solution de secours en ligne de commande plutôt que de le supprimer
+- [x] Décision : abandonner l'email de prospection au profit de messages Instagram/WhatsApp, l'email du commerçant étant rarement disponible via Google Places
+- [x] Décision : garder le site Netlify `premierclic-maquettes` partagé entre tous les prospects, en s'appuyant sur les liens de déploiement individuels (préfixés par l'ID de déploiement) plutôt que sur l'URL racine du site, pour que chaque maquette conserve un lien stable
+- [x] Décision : la page de tarifs sera une page statique stylée (Canva/HTML), pas un générateur de devis dynamique dans l'app — trop de complexité pour un besoin pas encore validé
 
 5) Notes / remarques
-- Les photos personnalisées ne seront réellement exploitables par Claude Design qu'une fois l'API déployée avec une URL publique (actuellement `localhost` en dev).
+- Le bandeau « aperçu de maquette » est injecté à chaque déploiement/redéploiement ; les maquettes déjà déployées avant ce correctif doivent être redéployées pour en bénéficier.
 ```
 
 ```text
