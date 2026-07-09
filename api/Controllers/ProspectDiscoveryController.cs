@@ -382,10 +382,10 @@ public class ProspectDiscoveryController : ControllerBase
         {
             sb.AppendLine("- Ton professionnel mais chaleureux, direct, pas de jargon marketing ni de formules impersonnelles (\"Cher Monsieur, Chère Madame\").");
             sb.AppendLine("- 100 à 150 mots maximum.");
-            sb.AppendLine("- Commence toujours par \"Bonjour,\" puis présente-toi brièvement dès la première phrase : je m'appelle Ethan Frou (pas besoin de détailler un statut ou un métier, une phrase suffit).");
+            sb.AppendLine("- Commence toujours par \"Bonjour,\" puis dis clairement ton prénom dès la première phrase : je m'appelle Ethan (pas besoin de détailler un statut ou un métier, une phrase suffit).");
             sb.AppendLine("- Explique en une phrase que le commerce n'a pas encore de site, mentionne la maquette déjà prête à regarder (avec le lien si disponible), et propose un échange rapide si ça l'intéresse.");
             if (!string.IsNullOrWhiteSpace(companyWebsiteUrl))
-                sb.AppendLine("- Glisse le lien de notre site en signature, comme preuve que c'est une vraie entreprise, sans trop insister dessus.");
+                sb.AppendLine("- Glisse le lien de notre site en signature, mais jamais seul : ajoute une courte précision sur ce que c'est (ex. \"voici mon site\" / \"d'autres réalisations ici\"), sans trop insister dessus.");
             sb.AppendLine("- Termine par une signature simple avec mon prénom (Ethan), sans nom d'entreprise inventé.");
             sb.Append("- Réponds uniquement avec deux blocs clairement séparés : \"Objet : ...\" puis \"Corps : ...\" (le corps peut contenir de simples sauts de ligne, pas besoin de HTML).");
         }
@@ -393,10 +393,10 @@ public class ProspectDiscoveryController : ControllerBase
         {
             sb.AppendLine($"- Ton chaleureux, direct et décontracté, adapté à un message privé sur {canalLabel} (pas un email formel) : pas de \"Bonjour Madame/Monsieur\", plutôt une accroche naturelle.");
             sb.AppendLine("- 50 à 80 mots maximum, format court adapté à un message privé.");
-            sb.AppendLine("- Commence toujours par \"Bonjour,\" puis présente-toi brièvement dès la première phrase : je m'appelle Ethan Frou (pas besoin de détailler un statut ou un métier, une phrase suffit).");
+            sb.AppendLine("- Commence toujours par \"Bonjour,\" puis dis clairement ton prénom dès la première phrase : je m'appelle Ethan (pas besoin de détailler un statut ou un métier, une phrase suffit).");
             sb.AppendLine("- Explique en une phrase que le commerce n'a pas encore de site, mentionne la maquette déjà prête à regarder (avec le lien si disponible), et propose un échange rapide si ça l'intéresse.");
             if (!string.IsNullOrWhiteSpace(companyWebsiteUrl))
-                sb.AppendLine("- Glisse le lien de notre site en signature, comme preuve que c'est une vraie entreprise, sans trop insister dessus.");
+                sb.AppendLine("- Glisse le lien de notre site en signature, mais jamais seul : ajoute une courte précision sur ce que c'est (ex. \"voici mon site\" / \"d'autres réalisations ici\"), sans trop insister dessus.");
             sb.AppendLine("- Termine par une signature simple avec mon prénom (Ethan), sans nom d'entreprise inventé.");
             sb.Append("- Réponds uniquement avec le texte du message, prêt à copier-coller directement, sans \"Objet :\" ni formule d'email.");
         }
