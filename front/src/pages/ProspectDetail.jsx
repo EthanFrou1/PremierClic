@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { googleBusinessUrl } from '../utils/google'
 import { STATUS_ORDER, statusMeta } from '../utils/status'
+import Header from '../components/Header'
 
 export default function ProspectDetail() {
   const { id } = useParams()
@@ -35,6 +36,7 @@ export default function ProspectDetail() {
   const [photoLinkInput, setPhotoLinkInput] = useState('')
   const [photoLinkAdding, setPhotoLinkAdding] = useState(false)
   const [photoLinkMessage, setPhotoLinkMessage] = useState('')
+  const [activeTab, setActiveTab] = useState('maquette')
 
   useEffect(() => {
     fetchData()
@@ -329,39 +331,71 @@ export default function ProspectDetail() {
     }
   }
 
-  if (loading) return <div className="p-6">Chargement...</div>
-  if (error) return <div className="p-6 text-red-600">{error}</div>
-  if (!prospect) return <div className="p-6">Prospect introuvable</div>
+  if (loading) return (
+    <div className="min-h-screen bg-slate-50 text-slate-900">
+      <Header />
+      <main className="mx-auto max-w-6xl px-6 py-8 text-sm text-slate-500">Chargement...</main>
+    </div>
+  )
+  if (error) return (
+    <div className="min-h-screen bg-slate-50 text-slate-900">
+      <Header />
+      <main className="mx-auto max-w-6xl px-6 py-8 text-sm text-rose-600">{error}</main>
+    </div>
+  )
+  if (!prospect) return (
+    <div className="min-h-screen bg-slate-50 text-slate-900">
+      <Header />
+      <main className="mx-auto max-w-6xl px-6 py-8 text-sm text-slate-500">Prospect introuvable</main>
+    </div>
+  )
+
+  const meta = statusMeta(prospect.statut)
 
   return (
-    <div className="p-6">
-      <div className="mb-6 flex items-center justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-semibold">{prospect.nom}</h2>
-          <p className="text-sm text-slate-500">{prospect.ville} · {prospect.categorie}</p>
-          <div className="mt-1 flex flex-wrap items-center gap-3">
-            <a
-              href={googleBusinessUrl(prospect)}
-              target="_blank"
-              rel="noreferrer"
-              className="text-sm font-medium text-sky-700 hover:underline"
-            >
-              Voir la fiche Google Business →
-            </a>
-            <button
-              onClick={handleRefreshGoogle}
-              disabled={refreshing}
-              className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-800 hover:bg-amber-200 disabled:opacity-50"
-            >
-              {refreshing ? 'Rafraîchissement...' : 'Rafraîchir depuis Google'}
-            </button>
-          </div>
-          {refreshMessage && <p className="mt-1 text-xs text-slate-500">{refreshMessage}</p>}
-        </div>
-        <Link to="/prospects" className="rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white">Retour</Link>
-      </div>
+    <div className="min-h-screen bg-slate-50 text-slate-900">
+      <Header />
 
-      <div className="grid gap-6 lg:grid-cols-[1.3fr_0.9fr]">
+      <main className="mx-auto max-w-6xl px-6 py-8">
+        <Link to="/prospects" className="inline-flex items-center gap-1 text-sm font-medium text-slate-500 hover:text-slate-900">
+          ← Retour aux prospects
+        </Link>
+
+        <div className="mb-6 mt-3 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <div className="flex flex-wrap items-center gap-3">
+              <h1 className="text-2xl font-semibold">{prospect.nom}</h1>
+              <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${meta.row} ${meta.text}`}>
+                <span className={`h-1.5 w-1.5 rounded-full ${meta.dot}`}></span>
+                {meta.label}
+              </span>
+            </div>
+            <p className="mt-1 text-sm text-slate-500">{prospect.categorie || 'Commerce local'} · {prospect.ville}</p>
+          </div>
+
+          <div className="flex flex-col items-start gap-2 sm:items-end">
+            <div className="flex flex-wrap items-center gap-2">
+              <a
+                href={googleBusinessUrl(prospect)}
+                target="_blank"
+                rel="noreferrer"
+                className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+              >
+                Fiche Google Business →
+              </a>
+              <button
+                onClick={handleRefreshGoogle}
+                disabled={refreshing}
+                className="rounded-lg bg-amber-100 px-3 py-2 text-sm font-semibold text-amber-800 hover:bg-amber-200 disabled:opacity-50"
+              >
+                {refreshing ? 'Rafraîchissement...' : 'Rafraîchir depuis Google'}
+              </button>
+            </div>
+            {refreshMessage && <p className="text-xs text-slate-500">{refreshMessage}</p>}
+          </div>
+        </div>
+
+        <div className="grid gap-6 lg:grid-cols-[1.3fr_0.9fr]">
         <section className="space-y-4 rounded-3xl bg-white p-6 shadow-sm shadow-slate-200">
           <h3 className="text-lg font-semibold">Détails du prospect</h3>
           <div className="grid gap-4 sm:grid-cols-2">
@@ -430,194 +464,227 @@ export default function ProspectDetail() {
           {message && <div className="mt-3 text-sm text-slate-700">{message}</div>}
         </section>
 
-        <aside className="space-y-6">
-          <section className="rounded-3xl bg-white p-6 shadow-sm shadow-slate-200">
-            <h3 className="text-lg font-semibold">Prompt maquette</h3>
-            <p className="text-sm text-slate-500">Génère un prompt prêt à coller dans Claude, avec les infos et avis récupérés depuis la fiche Google Business.</p>
-            <button
-              onClick={handleGenerateMockupPrompt}
-              disabled={mockupPromptLoading}
-              className="mt-3 w-full rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-700 disabled:opacity-50"
-            >
-              {mockupPromptLoading ? 'Génération...' : 'Générer le prompt'}
-            </button>
-            {mockupPromptError && <p className="mt-2 text-sm text-rose-700">{mockupPromptError}</p>}
-            {mockupPrompt && (
-              <div className="mt-4 space-y-2">
-                <textarea
-                  readOnly
-                  value={mockupPrompt}
-                  rows={10}
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700"
-                />
-                <button
-                  onClick={handleCopyMockupPrompt}
-                  className="w-full rounded-xl bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-500"
-                >
-                  {mockupPromptCopied ? 'Copié !' : 'Copier le prompt'}
-                </button>
-              </div>
-            )}
-          </section>
-
-          <section className="rounded-3xl bg-white p-6 shadow-sm shadow-slate-200">
-            <h3 className="text-lg font-semibold">Liens photos</h3>
-            <p className="text-sm text-slate-500">Colle des liens directs vers des photos (ex. via clic droit → Inspecter sur une photo Google Maps, puis copie l'URL de l'image). Ils seront inclus dans le prompt de maquette.</p>
-            <div className="mt-3 flex gap-2">
-              <input
-                value={photoLinkInput}
-                onChange={e => setPhotoLinkInput(e.target.value)}
-                placeholder="https://lh3.googleusercontent.com/..."
-                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm"
-              />
+        <aside className="rounded-3xl bg-white shadow-sm shadow-slate-200">
+          <nav className="flex gap-1 border-b border-slate-200 px-4 pt-2">
+            {[
+              { key: 'maquette', label: 'Maquette' },
+              { key: 'photos', label: 'Photos' },
+              { key: 'message', label: 'Message' },
+            ].map(tab => (
               <button
-                onClick={handleAddPhotoLink}
-                disabled={photoLinkAdding}
-                className="shrink-0 rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700 disabled:opacity-50"
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key)}
+                className={`-mb-px border-b-2 px-4 py-3 text-sm font-semibold transition-colors ${
+                  activeTab === tab.key
+                    ? 'border-slate-900 text-slate-900'
+                    : 'border-transparent text-slate-500 hover:text-slate-700'
+                }`}
               >
-                {photoLinkAdding ? 'Ajout...' : 'Ajouter'}
+                {tab.label}
               </button>
-            </div>
-            {photoLinkMessage && <p className="mt-2 text-sm text-slate-700">{photoLinkMessage}</p>}
-            {photoLinks.length > 0 && (
-              <div className="mt-4 grid grid-cols-3 gap-2">
-                {photoLinks.map(p => (
-                  <div key={p.id} className="relative overflow-hidden rounded-xl border border-slate-200">
-                    <img src={p.url} alt="Lien photo" className="h-20 w-full object-cover" />
-                    <button
-                      onClick={() => handleDeletePhotoLink(p.id)}
-                      title="Supprimer"
-                      className="absolute right-1 top-1 rounded-full bg-black/60 px-1.5 text-xs font-semibold text-white hover:bg-black/80"
-                    >
-                      ×
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
+            ))}
+          </nav>
 
-          <section className="rounded-3xl bg-white p-6 shadow-sm shadow-slate-200">
-            <h3 className="text-lg font-semibold">Maquettes</h3>
-            <div className="space-y-3">
-              <label className="block text-sm font-medium text-slate-700">Lien de maquette</label>
-              <input
-                value={mockupUrl}
-                onChange={e => setMockupUrl(e.target.value)}
-                placeholder="https://..."
-                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2"
-              />
-              <label className="block text-sm font-medium text-slate-700">Ou upload d’un fichier (image, ou export HTML Claude Design)</label>
-              <input type="file" accept="image/*,.html" onChange={e => setUploadFile(e.target.files?.[0] || null)} className="w-full text-sm text-slate-700" />
-              <p className="text-xs text-slate-500">Pour un export HTML, un bouton « Déployer sur Netlify » apparaîtra sur la maquette dans la liste ci-dessous une fois ajoutée.</p>
-              <button onClick={handleAddMockup} className="mt-3 w-full rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-700">Ajouter maquette</button>
-            </div>
-            <div className="mt-5 space-y-3">
-              {deployMessage && <p className="text-sm text-slate-700">{deployMessage}</p>}
-              {mockups.length === 0 && <div className="text-sm text-slate-500">Aucune maquette ajoutée.</div>}
-              {mockups.map(m => (
-                <div key={m.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                  <p className="text-sm font-semibold text-slate-800">{m.commentaire || 'Maquette'}</p>
-                  {m.urlPreview && <a href={m.urlPreview} target="_blank" rel="noreferrer" className="text-sm text-sky-700">Voir la maquette</a>}
-                  {m.path && <span className="text-sm text-slate-600 block">Fichier uploadé : {m.path}</span>}
-                  {m.path && (
-                    <button
-                      onClick={() => handleDeployExistingMockup(m.id)}
-                      className="mt-2 rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-teal-500"
-                    >
-                      {m.urlPreview ? 'Redéployer sur Netlify' : 'Déployer sur Netlify'}
-                    </button>
+          <div className="p-6">
+            {activeTab === 'maquette' && (
+              <div className="space-y-6">
+                <div>
+                  <h3 className="text-base font-semibold">1. Générer le prompt</h3>
+                  <p className="mt-1 text-sm text-slate-500">Prompt prêt à coller dans Claude, avec les infos et avis récupérés depuis la fiche Google Business.</p>
+                  <button
+                    onClick={handleGenerateMockupPrompt}
+                    disabled={mockupPromptLoading}
+                    className="mt-3 w-full rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-700 disabled:opacity-50"
+                  >
+                    {mockupPromptLoading ? 'Génération...' : 'Générer le prompt'}
+                  </button>
+                  {mockupPromptError && <p className="mt-2 text-sm text-rose-700">{mockupPromptError}</p>}
+                  {mockupPrompt && (
+                    <div className="mt-4 space-y-2">
+                      <textarea
+                        readOnly
+                        value={mockupPrompt}
+                        rows={8}
+                        className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700"
+                      />
+                      <button
+                        onClick={handleCopyMockupPrompt}
+                        className="w-full rounded-xl bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-500"
+                      >
+                        {mockupPromptCopied ? 'Copié !' : 'Copier le prompt'}
+                      </button>
+                    </div>
                   )}
                 </div>
-              ))}
-            </div>
-          </section>
 
-          <section className="rounded-3xl bg-white p-6 shadow-sm shadow-slate-200">
-            <h3 className="text-lg font-semibold">Message de prospection</h3>
-            <p className="text-sm text-slate-500">Génère un prompt prêt à coller dans Claude, avec les infos du commerce, les avis et le lien de la maquette déployée. Le prompt s'adapte au canal choisi (email formel, ou message court pour Instagram/WhatsApp).</p>
-            <label className="mt-3 block text-sm font-medium text-slate-700">Canal</label>
-            <select
-              value={messageCanal}
-              onChange={e => setMessageCanal(e.target.value)}
-              className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm"
-            >
-              <option value="Email">Email</option>
-              <option value="Instagram">Instagram</option>
-              <option value="WhatsApp">WhatsApp</option>
-              <option value="Autre">Autre</option>
-            </select>
-            <button
-              onClick={handleGenerateEmailPrompt}
-              disabled={emailPromptLoading}
-              className="mt-3 w-full rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-700 disabled:opacity-50"
-            >
-              {emailPromptLoading ? 'Génération...' : 'Générer le prompt'}
-            </button>
-            {emailPromptError && <p className="mt-2 text-sm text-rose-700">{emailPromptError}</p>}
-            {emailPrompt && (
-              <div className="mt-4 space-y-2">
-                {!emailPromptHasMockupUrl && (
-                  <p className="text-xs text-amber-700">Aucune maquette déployée pour ce prospect — le prompt généré n'inclut pas de lien. Déploie d'abord une maquette pour un message plus convaincant.</p>
-                )}
-                <textarea
-                  readOnly
-                  value={emailPrompt}
-                  rows={10}
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700"
-                />
-                <button
-                  onClick={handleCopyEmailPrompt}
-                  className="w-full rounded-xl bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-500"
-                >
-                  {emailPromptCopied ? 'Copié !' : 'Copier le prompt'}
-                </button>
+                <div className="border-t border-slate-100 pt-6">
+                  <h3 className="text-base font-semibold">2. Ajouter et déployer</h3>
+                  <div className="mt-3 space-y-3">
+                    <input
+                      value={mockupUrl}
+                      onChange={e => setMockupUrl(e.target.value)}
+                      placeholder="Lien de maquette (https://...)"
+                      className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm"
+                    />
+                    <div>
+                      <input type="file" accept="image/*,.html" onChange={e => setUploadFile(e.target.files?.[0] || null)} className="w-full text-sm text-slate-700" />
+                      <p className="mt-1 text-xs text-slate-500">Ou upload d'un fichier (image, ou export HTML Claude Design). Pour un export HTML, un bouton « Déployer sur Netlify » apparaîtra une fois ajoutée.</p>
+                    </div>
+                    <button onClick={handleAddMockup} className="w-full rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-700">Ajouter maquette</button>
+                  </div>
+                  <div className="mt-4 space-y-3">
+                    {deployMessage && <p className="text-sm text-slate-700">{deployMessage}</p>}
+                    {mockups.length === 0 && <div className="text-sm text-slate-500">Aucune maquette ajoutée.</div>}
+                    {mockups.map(m => (
+                      <div key={m.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                        <p className="text-sm font-semibold text-slate-800">{m.commentaire || 'Maquette'}</p>
+                        {m.urlPreview && <a href={m.urlPreview} target="_blank" rel="noreferrer" className="text-sm text-sky-700">Voir la maquette</a>}
+                        {m.path && <span className="block text-sm text-slate-600">Fichier uploadé : {m.path}</span>}
+                        {m.path && (
+                          <button
+                            onClick={() => handleDeployExistingMockup(m.id)}
+                            className="mt-2 rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-teal-500"
+                          >
+                            {m.urlPreview ? 'Redéployer sur Netlify' : 'Déployer sur Netlify'}
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
             )}
 
-            <div className="mt-5 border-t border-slate-100 pt-5 space-y-3">
-              <label className="block text-sm font-medium text-slate-700">Message généré par Claude</label>
-              <textarea
-                value={messageDraft}
-                onChange={e => setMessageDraft(e.target.value)}
-                rows={6}
-                placeholder="Colle ici le message renvoyé par Claude..."
-                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm"
-              />
-              <p className="text-xs text-slate-500">Sera enregistré avec le canal sélectionné ci-dessus ({messageCanal}).</p>
-              <button
-                onClick={handleSaveMessage}
-                disabled={messageSaving}
-                className="w-full rounded-xl bg-emerald-600 px-5 py-3 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-50"
-              >
-                {messageSaving ? 'Enregistrement...' : 'Enregistrer le message'}
-              </button>
-              {messageError && <p className="text-sm text-rose-700">{messageError}</p>}
-            </div>
-
-            {savedMessages.length > 0 && (
-              <div className="mt-5 space-y-3 border-t border-slate-100 pt-5">
-                {savedMessages.map(m => (
-                  <div key={m.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                    <div className="flex items-center justify-between">
-                      <span className="rounded-full bg-slate-900 px-2.5 py-0.5 text-xs font-semibold text-white">{m.canal || 'Autre'}</span>
-                      <div className="flex items-center gap-3">
-                        <button onClick={() => handleCopyMessage(m)} className="text-xs font-semibold text-sky-700 hover:underline">
-                          {messageCopiedId === m.id ? 'Copié !' : 'Copier'}
-                        </button>
-                        <button onClick={() => handleDeleteMessage(m.id)} className="text-xs font-semibold text-rose-700 hover:underline">
-                          Supprimer
+            {activeTab === 'photos' && (
+              <div>
+                <h3 className="text-base font-semibold">Liens photos</h3>
+                <p className="mt-1 text-sm text-slate-500">Colle des liens directs vers des photos (ex. via clic droit → Inspecter sur une photo Google Maps, puis copie l'URL de l'image). Ils seront inclus dans le prompt de maquette.</p>
+                <div className="mt-3 flex gap-2">
+                  <input
+                    value={photoLinkInput}
+                    onChange={e => setPhotoLinkInput(e.target.value)}
+                    placeholder="https://lh3.googleusercontent.com/..."
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm"
+                  />
+                  <button
+                    onClick={handleAddPhotoLink}
+                    disabled={photoLinkAdding}
+                    className="shrink-0 rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700 disabled:opacity-50"
+                  >
+                    {photoLinkAdding ? 'Ajout...' : 'Ajouter'}
+                  </button>
+                </div>
+                {photoLinkMessage && <p className="mt-2 text-sm text-slate-700">{photoLinkMessage}</p>}
+                {photoLinks.length > 0 ? (
+                  <div className="mt-4 grid grid-cols-3 gap-2">
+                    {photoLinks.map(p => (
+                      <div key={p.id} className="relative overflow-hidden rounded-xl border border-slate-200">
+                        <img src={p.url} alt="Lien photo" className="h-20 w-full object-cover" />
+                        <button
+                          onClick={() => handleDeletePhotoLink(p.id)}
+                          title="Supprimer"
+                          className="absolute right-1 top-1 rounded-full bg-black/60 px-1.5 text-xs font-semibold text-white hover:bg-black/80"
+                        >
+                          ×
                         </button>
                       </div>
-                    </div>
-                    <p className="mt-2 whitespace-pre-wrap text-sm text-slate-800">{m.message}</p>
+                    ))}
                   </div>
-                ))}
+                ) : (
+                  <div className="mt-4 text-sm text-slate-500">Aucun lien photo ajouté.</div>
+                )}
               </div>
             )}
-          </section>
+
+            {activeTab === 'message' && (
+              <div>
+                <h3 className="text-base font-semibold">Message de prospection</h3>
+                <p className="mt-1 text-sm text-slate-500">Génère un prompt prêt à coller dans Claude, avec les infos du commerce, les avis et le lien de la maquette déployée. Le prompt s'adapte au canal choisi (email formel, ou message court pour Instagram/WhatsApp).</p>
+                <label className="mt-3 block text-sm font-medium text-slate-700">Canal</label>
+                <select
+                  value={messageCanal}
+                  onChange={e => setMessageCanal(e.target.value)}
+                  className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm"
+                >
+                  <option value="Email">Email</option>
+                  <option value="Instagram">Instagram</option>
+                  <option value="WhatsApp">WhatsApp</option>
+                  <option value="Autre">Autre</option>
+                </select>
+                <button
+                  onClick={handleGenerateEmailPrompt}
+                  disabled={emailPromptLoading}
+                  className="mt-3 w-full rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-700 disabled:opacity-50"
+                >
+                  {emailPromptLoading ? 'Génération...' : 'Générer le prompt'}
+                </button>
+                {emailPromptError && <p className="mt-2 text-sm text-rose-700">{emailPromptError}</p>}
+                {emailPrompt && (
+                  <div className="mt-4 space-y-2">
+                    {!emailPromptHasMockupUrl && (
+                      <p className="text-xs text-amber-700">Aucune maquette déployée pour ce prospect — le prompt généré n'inclut pas de lien. Déploie d'abord une maquette pour un message plus convaincant.</p>
+                    )}
+                    <textarea
+                      readOnly
+                      value={emailPrompt}
+                      rows={8}
+                      className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700"
+                    />
+                    <button
+                      onClick={handleCopyEmailPrompt}
+                      className="w-full rounded-xl bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-500"
+                    >
+                      {emailPromptCopied ? 'Copié !' : 'Copier le prompt'}
+                    </button>
+                  </div>
+                )}
+
+                <div className="mt-5 space-y-3 border-t border-slate-100 pt-5">
+                  <label className="block text-sm font-medium text-slate-700">Message généré par Claude</label>
+                  <textarea
+                    value={messageDraft}
+                    onChange={e => setMessageDraft(e.target.value)}
+                    rows={6}
+                    placeholder="Colle ici le message renvoyé par Claude..."
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm"
+                  />
+                  <p className="text-xs text-slate-500">Sera enregistré avec le canal sélectionné ci-dessus ({messageCanal}).</p>
+                  <button
+                    onClick={handleSaveMessage}
+                    disabled={messageSaving}
+                    className="w-full rounded-xl bg-emerald-600 px-5 py-3 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-50"
+                  >
+                    {messageSaving ? 'Enregistrement...' : 'Enregistrer le message'}
+                  </button>
+                  {messageError && <p className="text-sm text-rose-700">{messageError}</p>}
+                </div>
+
+                {savedMessages.length > 0 && (
+                  <div className="mt-5 space-y-3 border-t border-slate-100 pt-5">
+                    {savedMessages.map(m => (
+                      <div key={m.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                        <div className="flex items-center justify-between">
+                          <span className="rounded-full bg-slate-900 px-2.5 py-0.5 text-xs font-semibold text-white">{m.canal || 'Autre'}</span>
+                          <div className="flex items-center gap-3">
+                            <button onClick={() => handleCopyMessage(m)} className="text-xs font-semibold text-sky-700 hover:underline">
+                              {messageCopiedId === m.id ? 'Copié !' : 'Copier'}
+                            </button>
+                            <button onClick={() => handleDeleteMessage(m.id)} className="text-xs font-semibold text-rose-700 hover:underline">
+                              Supprimer
+                            </button>
+                          </div>
+                        </div>
+                        <p className="mt-2 whitespace-pre-wrap text-sm text-slate-800">{m.message}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </aside>
       </div>
+      </main>
     </div>
   )
 }

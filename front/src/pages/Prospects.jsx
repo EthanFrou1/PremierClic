@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { googleBusinessUrl } from '../utils/google'
 import { STATUS_ORDER, statusMeta } from '../utils/status'
 import { loadGoogleMapsScript } from '../utils/loadGoogleMaps'
+import Header from '../components/Header'
 
 export default function Prospects(){
   const navigate = useNavigate()
@@ -15,6 +16,7 @@ export default function Prospects(){
   const [importing, setImporting] = useState(false)
   const [resultModal, setResultModal] = useState(null)
   const [refreshingId, setRefreshingId] = useState(null)
+  const [deletingId, setDeletingId] = useState(null)
   const [googleConfigOpen, setGoogleConfigOpen] = useState(false)
   const [googleConfig, setGoogleConfig] = useState({ maxResults: 20, radiusMeters: 5000, ville: '' })
   const villeInputRef = useRef(null)
@@ -86,29 +88,6 @@ export default function Prospects(){
     return true
   })
 
-  async function handleDiscovery() {
-    setImporting(true)
-
-    try {
-      const res = await fetch((import.meta.env.VITE_API_BASE_URL || '') + '/api/prospects/discover', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ latitude: 42.688, longitude: 2.894, radiusMeters: 5000, maxResults: 100, categories: ["shop", "amenity"] })
-      })
-      if (!res.ok) {
-        const text = await res.text()
-        throw new Error(text || 'Erreur découverte')
-      }
-      const payload = await res.json()
-      await fetchList()
-      setResultModal({ source: 'Overpass', imported: payload.imported, prospects: payload.prospects || [], error: null })
-    } catch (err) {
-      setResultModal({ source: 'Overpass', imported: 0, prospects: [], error: err.message || 'Erreur inconnue' })
-    } finally {
-      setImporting(false)
-    }
-  }
-
   async function handleGoogleDiscovery(config) {
     setGoogleConfigOpen(false)
     setImporting(true)
@@ -175,27 +154,37 @@ export default function Prospects(){
     }
   }
 
+  async function handleDelete(id, nom) {
+    if (!window.confirm(`Supprimer définitivement "${nom}" ? Cette action est irréversible.`)) return
+    setDeletingId(id)
+    try {
+      const res = await fetch((import.meta.env.VITE_API_BASE_URL || '') + `/api/prospects/${id}`, {
+        method: 'DELETE'
+      })
+      if (!res.ok) throw new Error('Échec de la suppression')
+      setList(list.filter(p => p.id !== id))
+    } catch (err) {
+      setError(err.message || 'Erreur inconnue')
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
   return (
-    <div className="p-6">
+    <div className="min-h-screen bg-slate-50 text-slate-900">
+      <Header />
+
+      <main className="mx-auto max-w-6xl px-6 py-8">
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-2xl font-semibold">Prospects</h2>
+          <h1 className="text-2xl font-semibold">Prospects</h1>
           <p className="text-sm text-slate-500">Importer des commerces locaux sans site et visualiser les résultats.</p>
         </div>
-        <Link to="/" className="rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700">Accueil</Link>
-      </div>
-
-      <div className="mb-6 rounded-3xl bg-white p-6 shadow-sm shadow-slate-200">
-        <h3 className="text-lg font-semibold">Importer des prospects</h3>
-        <p className="text-sm text-slate-500">Lance la découverte automatique et ajoute des commerces locaux sans saisie manuelle.</p>
-        <div className="mt-4 flex flex-wrap items-center gap-3">
-          <button onClick={handleDiscovery} disabled={importing} className="rounded-xl bg-emerald-600 px-5 py-3 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-50">
-            {importing ? 'Import en cours...' : 'Découvrir via Overpass'}
-          </button>
-          <button onClick={() => setGoogleConfigOpen(true)} disabled={importing} className="rounded-xl bg-sky-600 px-5 py-3 text-sm font-semibold text-white hover:bg-sky-500 disabled:opacity-50">
+        <div className="flex flex-wrap gap-3">
+          <button onClick={() => setGoogleConfigOpen(true)} disabled={importing} className="rounded-xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-sky-500 disabled:opacity-50">
             {importing ? 'Import en cours...' : 'Découvrir via Google Places'}
           </button>
-          <button onClick={handleRefreshExisting} disabled={importing} className="rounded-xl bg-amber-600 px-5 py-3 text-sm font-semibold text-white hover:bg-amber-500 disabled:opacity-50">
+          <button onClick={handleRefreshExisting} disabled={importing} className="rounded-xl bg-amber-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-amber-500 disabled:opacity-50">
             {importing ? 'Import en cours...' : 'Compléter les commerces existants'}
           </button>
         </div>
@@ -233,6 +222,7 @@ export default function Prospects(){
               <th className="px-4 py-3">Statut</th>
               <th className="px-4 py-3">Ville</th>
               <th className="px-4 py-3">Email</th>
+              <th className="px-4 py-3">Téléphone</th>
               <th className="px-4 py-3">Maquette</th>
               <th className="px-4 py-3">Actions</th>
             </tr>
@@ -246,8 +236,15 @@ export default function Prospects(){
                   onClick={() => navigate(`/prospects/${p.id}`)}
                   className={`cursor-pointer border-t border-slate-200 hover:bg-slate-100 ${meta.row}`}
                 >
-                  <td className="px-4 py-3">
-                    <a href={googleBusinessUrl(p)} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} className="text-sky-700 hover:underline">
+                  <td className="max-w-[220px] px-4 py-3">
+                    <a
+                      href={googleBusinessUrl(p)}
+                      target="_blank"
+                      rel="noreferrer"
+                      onClick={e => e.stopPropagation()}
+                      title={p.nom}
+                      className="block truncate text-sky-700 hover:underline"
+                    >
                       {p.nom}
                     </a>
                   </td>
@@ -259,6 +256,7 @@ export default function Prospects(){
                   </td>
                   <td className="px-4 py-3">{p.ville}</td>
                   <td className="px-4 py-3">{p.email}</td>
+                  <td className="px-4 py-3">{p.telephone}</td>
                   <td className="px-4 py-3">
                     {p.hasDeployedMockup ? (
                       <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700">
@@ -275,20 +273,29 @@ export default function Prospects(){
                     )}
                   </td>
                   <td className="px-4 py-3">
-                    <button
-                      onClick={e => { e.stopPropagation(); handleRefreshOne(p.id) }}
-                      disabled={refreshingId === p.id}
-                      className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-800 hover:bg-amber-200 disabled:opacity-50"
-                    >
-                      {refreshingId === p.id ? '...' : 'Rafraîchir'}
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={e => { e.stopPropagation(); handleRefreshOne(p.id) }}
+                        disabled={refreshingId === p.id}
+                        className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-800 hover:bg-amber-200 disabled:opacity-50"
+                      >
+                        {refreshingId === p.id ? '...' : 'Rafraîchir'}
+                      </button>
+                      <button
+                        onClick={e => { e.stopPropagation(); handleDelete(p.id, p.nom) }}
+                        disabled={deletingId === p.id}
+                        className="rounded-full bg-rose-100 px-3 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-200 disabled:opacity-50"
+                      >
+                        {deletingId === p.id ? '...' : 'Supprimer'}
+                      </button>
+                    </div>
                   </td>
                 </tr>
               )
             })}
             {filteredList.length === 0 && !loading && (
               <tr>
-                <td colSpan="6" className="px-4 py-8 text-center text-sm text-slate-500">Aucun prospect trouvé. Lance une importation pour commencer.</td>
+                <td colSpan="7" className="px-4 py-8 text-center text-sm text-slate-500">Aucun prospect trouvé. Lance une importation pour commencer.</td>
               </tr>
             )}
           </tbody>
@@ -440,6 +447,7 @@ export default function Prospects(){
           </div>
         </div>
       )}
+      </main>
     </div>
   )
 }
